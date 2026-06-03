@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NEXUS">
+<meta name="theme-color" content="#00d4ff">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>NEXUS — Security</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:      #080c10;
+  --bg2:     #0d1420;
+  --bg3:     #111c2b;
+  --border:  #1a2d44;
+  --accent:  #00d4ff;
+  --accent2: #0077ff;
+  --danger:  #ff3b3b;
+  --warn:    #ffaa00;
+  --ok:      #00e676;
+  --text:    #c8ddf0;
+  --muted:   #4a6a8a;
+  --mono:    'Share Tech Mono', monospace;
+  --head:    'Rajdhani', sans-serif;
+  --body:    'Exo 2', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--body); }
+body {
+  background-image:
+    linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+.shell { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+
+/* ── LOGIN SCREEN ─────────────────────────────────────────────── */
+#login-screen {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 20px;
+  background: var(--bg);
+  background-image:
+    linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  transition: opacity 0.5s, transform 0.5s;
+}
+#login-screen.hidden { opacity: 0; pointer-events: none; transform: scale(1.03); }
+
+.login-brand { text-align: center; margin-bottom: 36px; }
+.login-logo {
+  font-family: var(--head); font-size: 52px; font-weight: 700;
+  color: var(--accent); letter-spacing: 12px; line-height: 1;
+  text-shadow: 0 0 40px rgba(0,212,255,0.3);
+}
+.login-logo span { color: var(--muted); }
+.login-tagline {
+  font-family: var(--mono); font-size: 10px; color: var(--muted);
+  letter-spacing: 5px; margin-top: 10px;
+}
+
+.login-card {
+  width: 100%; max-width: 400px;
+  background: var(--bg2); border: 1px solid var(--border);
+  padding: 36px 32px; position: relative; overflow: hidden;
+}
+.login-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: scanline 3s linear infinite;
+}
+@keyframes scanline { from{transform:translateX(-100%)} to{transform:translateX(100%)} }
+.login-card::after {
+  content: ''; position: absolute; bottom: 0; right: 0;
+  width: 60px; height: 60px;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  pointer-events: none;
+}
+
+.login-card-title {
+  font-family: var(--mono); font-size: 10px; color: var(--accent);
+  letter-spacing: 4px; text-transform: uppercase;
+  text-align: center; margin-bottom: 28px;
+}
+
+/* Role selector */
+.role-selector {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 24px;
+}
+.role-btn {
+  padding: 12px 8px; border: 1px solid var(--border);
+  background: transparent; cursor: pointer; transition: all 0.2s;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.role-btn:hover { border-color: #1a2d44; }
+.role-btn.active { border-color: var(--accent); background: rgba(0,212,255,0.05); }
+.role-icon { font-size: 22px; line-height: 1; }
+.role-name {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 2px;
+  color: var(--muted); transition: color 0.2s;
+}
+.role-btn.active .role-name { color: var(--accent); }
+.role-desc {
+  font-family: var(--mono); font-size: 8px; color: var(--muted);
+  letter-spacing: 1px; text-align: center; line-height: 1.4; opacity: 0.7;
+}
+.role-btn.active .role-desc { opacity: 1; }
+
+/* Form fields */
+.login-field { margin-bottom: 16px; }
+.login-field label {
+  display: block; font-family: var(--mono); font-size: 9px;
+  color: var(--muted); letter-spacing: 3px; text-transform: uppercase; margin-bottom: 6px;
+}
+.login-input {
+  width: 100%; padding: 11px 14px;
+  background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text); font-family: var(--mono); font-size: 13px;
+  outline: none; transition: border-color 0.2s; letter-spacing: 1px;
+}
+.login-input:focus { border-color: var(--accent); }
+.login-input::placeholder { color: var(--muted); }
+
+/* Login button */
+.login-btn {
+  width: 100%; padding: 14px; margin-top: 8px;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--accent); font-family: var(--head); font-size: 16px;
+  font-weight: 700; letter-spacing: 6px; cursor: pointer;
+  transition: all 0.2s; position: relative; overflow: hidden;
+}
+.login-btn:hover { border-color: var(--accent); box-shadow: 0 0 20px rgba(0,212,255,0.08); }
+.login-btn:active { transform: scale(0.99); }
+.login-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.login-status {
+  font-family: var(--mono); font-size: 10px; text-align: center;
+  letter-spacing: 2px; margin-top: 14px; min-height: 16px; transition: color 0.3s;
+}
+.login-status.connecting { color: var(--warn); }
+.login-status.error      { color: var(--danger); }
+.login-status.ok         { color: var(--ok); }
+.login-lockout {
+  font-family: var(--mono); font-size: 10px; color: var(--danger);
+  text-align: center; margin-top: 10px; letter-spacing: 1px; min-height: 14px;
+}
+
+@keyframes shake {
+  0%,100%{ transform: translateX(0); }
+  20%    { transform: translateX(-10px); }
+  40%    { transform: translateX(10px); }
+  60%    { transform: translateX(-7px); }
+  80%    { transform: translateX(7px); }
+}
+.login-card.shake { animation: shake 0.4s ease; }
+
+/* ── HEADER ─────────────────────────────────────────────────────── */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 24px; margin-bottom: 24px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-top: 2px solid var(--accent);
+  position: relative; overflow: hidden;
+}
+header::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: scanline 3s linear infinite;
+}
+.logo { font-family: var(--mono); font-size: 22px; color: var(--accent); letter-spacing: 4px; }
+.logo span { color: var(--muted); }
+.header-meta { text-align: right; }
+.header-meta .uptime { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+/* Role badge */
+.role-badge-header {
+  font-family: var(--mono); font-size: 9px; letter-spacing: 2px;
+  padding: 3px 10px; border: 1px solid; display: inline-block; margin-top: 4px;
+}
+.role-badge-header.admin  { color: var(--accent); border-color: rgba(0,212,255,0.3); background: rgba(0,212,255,0.06); }
+.role-badge-header.viewer { color: var(--warn);   border-color: rgba(255,170,0,0.3); background: rgba(255,170,0,0.06); }
+
+/* MQTT status pill */
+#mqtt-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
+  padding: 4px 10px; border: 1px solid var(--border); margin-top: 6px;
+}
+#mqtt-status.connected  { color: var(--ok);    border-color: var(--ok); }
+#mqtt-status.connecting { color: var(--warn);  border-color: var(--warn); }
+#mqtt-status.error      { color: var(--danger); border-color: var(--danger); }
+#mqtt-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+#mqtt-status.connected  #mqtt-dot { animation: blink 2s ease-in-out infinite; }
+#mqtt-status.connecting #mqtt-dot { animation: blink 0.6s step-end infinite; }
+
+/* Logout button */
+.logout-btn {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 2px;
+  padding: 5px 12px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); cursor: pointer; transition: all 0.2s;
+  margin-top: 6px;
+}
+.logout-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+/* Alert Banner */
+#alert-banner {
+  display: none; padding: 14px 20px; margin-bottom: 20px;
+  background: rgba(255,59,59,0.12); border: 1px solid var(--danger);
+  font-family: var(--mono); font-size: 14px; color: var(--danger);
+  letter-spacing: 2px; text-align: center;
+  animation: pulse-border 1s ease-in-out infinite;
+}
+@keyframes pulse-border { 0%,100%{border-color:var(--danger)} 50%{border-color:rgba(255,59,59,0.3)} }
+#alert-banner.show { display: block; }
+
+/* Grid */
+.grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 20px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; margin-bottom: 20px; }
+@media(max-width:700px){ .grid-3,.grid-2 { grid-template-columns: 1fr; } }
+
+/* Cards */
+.card {
+  background: var(--bg2); border: 1px solid var(--border);
+  padding: 18px 20px; position: relative; overflow: hidden;
+}
+.card::after {
+  content: ''; position: absolute; top: 0; left: 0;
+  width: 3px; height: 100%; background: var(--accent);
+}
+.card.danger::after { background: var(--danger); }
+.card.ok::after     { background: var(--ok); }
+.card-label {
+  font-family: var(--mono); font-size: 10px; color: var(--muted);
+  letter-spacing: 3px; text-transform: uppercase; margin-bottom: 10px;
+}
+.card-value { font-size: 28px; font-weight: 700; letter-spacing: 1px; line-height: 1; }
+.card-sub   { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+/* Status indicators */
+.status-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.status-row:last-child { border-bottom: none; }
+.status-name { font-size: 14px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 8px; display: inline-block; }
+.dot.ok     { background: var(--ok);     box-shadow: 0 0 6px var(--ok); }
+.dot.danger { background: var(--danger); box-shadow: 0 0 6px var(--danger); animation: blink 0.8s step-end infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+.badge {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
+  padding: 3px 10px; border: 1px solid;
+}
+.badge.ok     { color: var(--ok);     border-color: var(--ok);     background: rgba(0,230,118,0.08); }
+.badge.danger { color: var(--danger); border-color: var(--danger); background: rgba(255,59,59,0.08); }
+.badge.warn   { color: var(--warn);   border-color: var(--warn);   background: rgba(255,170,0,0.08); }
+.badge.off    { color: var(--muted);  border-color: var(--border); background: transparent; }
+.badge.info   { color: var(--accent); border-color: rgba(0,212,255,0.3); background: rgba(0,212,255,0.06); }
+
+/* Section title */
+.sec-title {
+  font-family: var(--mono); font-size: 11px; color: var(--accent);
+  letter-spacing: 4px; text-transform: uppercase;
+  margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+
+/* Mode display */
+.mode-display {
+  padding: 24px; text-align: center;
+  background: var(--bg3); border: 1px solid var(--border);
+  margin-bottom: 20px; position: relative; overflow: hidden;
+}
+.mode-display .mode-label {
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  letter-spacing: 4px; text-transform: uppercase; margin-bottom: 10px;
+}
+.mode-display .mode-value {
+  font-family: var(--mono); font-size: 36px; font-weight: 400; letter-spacing: 8px;
+}
+.mode-display.armed    .mode-value { color: var(--danger); text-shadow: 0 0 20px rgba(255,59,59,0.4); }
+.mode-display.disarmed .mode-value { color: var(--ok);     text-shadow: 0 0 20px rgba(0,230,118,0.3); }
+.mode-display.alarm    .mode-value { color: var(--warn);   text-shadow: 0 0 20px rgba(255,170,0,0.4); animation: flicker 0.5s infinite; }
+@keyframes flicker { 0%,100%{opacity:1} 50%{opacity:0.7} }
+
+/* Arm button */
+.arm-wrap { margin-bottom: 20px; }
+#arm-btn {
+  width: 100%; padding: 20px; border: none; cursor: pointer;
+  font-family: var(--mono); font-size: 18px; letter-spacing: 6px;
+  transition: all 0.2s; position: relative; overflow: hidden;
+}
+#arm-btn.arm    { background: rgba(255,59,59,0.15); color: var(--danger); border: 1px solid var(--danger); }
+#arm-btn.disarm { background: rgba(0,230,118,0.15); color: var(--ok);     border: 1px solid var(--ok); }
+#arm-btn:active { transform: scale(0.99); }
+#arm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Viewer lock overlay */
+.viewer-lock { position: relative; }
+.viewer-lock::after {
+  content: 'VIEW ONLY';
+  position: absolute; inset: 0;
+  background: rgba(8,12,16,0.85);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 3px;
+  border: 1px solid var(--border); pointer-events: none;
+}
+
+/* Viewer notice */
+.viewer-notice {
+  font-family: var(--mono); font-size: 9px; color: var(--warn);
+  letter-spacing: 2px; padding: 8px 12px;
+  border: 1px solid rgba(255,170,0,0.2); background: rgba(255,170,0,0.06);
+  text-align: center; margin-bottom: 14px; display: none;
+}
+.viewer-notice.show { display: block; }
+
+/* Admin-only blur for viewer */
+.admin-only { transition: opacity 0.3s; }
+.viewer-mode .admin-only { opacity: 0.3; pointer-events: none; user-select: none; filter: blur(1px); }
+
+/* Inputs */
+.field { margin-bottom: 14px; }
+.field label {
+  display: block; font-family: var(--mono); font-size: 10px;
+  color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px;
+}
+.field input {
+  width: 100%; padding: 10px 14px;
+  background: var(--bg3); border: 1px solid var(--border); color: var(--text);
+  font-family: var(--mono); font-size: 13px; outline: none; transition: border-color 0.2s;
+}
+.field input:focus { border-color: var(--accent); }
+.field input::placeholder { color: var(--muted); }
+
+/* Buttons */
+.btn-row { display: flex; gap: 10px; }
+.btn {
+  padding: 10px 18px; border: 1px solid var(--border); background: var(--bg3);
+  color: var(--text); font-family: var(--mono); font-size: 12px;
+  letter-spacing: 2px; cursor: pointer; transition: all 0.2s; flex: 1;
+}
+.btn:hover  { border-color: var(--accent); color: var(--accent); }
+.btn:active { transform: scale(0.98); }
+.btn.primary { border-color: var(--accent2); color: var(--accent); background: rgba(0,119,255,0.1); }
+.btn.primary:hover { background: rgba(0,119,255,0.2); }
+
+/* Event log */
+#log-list {
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+  max-height: 220px; overflow-y: auto; line-height: 2;
+}
+#log-list .log-entry { padding: 4px 0; border-bottom: 1px solid rgba(26,45,68,0.5); }
+#log-list .log-entry:first-child { color: var(--text); }
+#log-list .log-entry.alert-log { color: var(--danger); }
+#log-list .log-entry.ok-log    { color: var(--ok); }
+
+/* Toast */
+#toast {
+  position: fixed; bottom: 24px; right: 24px;
+  padding: 12px 20px; background: var(--bg2);
+  border: 1px solid var(--accent); font-family: var(--mono);
+  font-size: 12px; color: var(--accent); letter-spacing: 1px;
+  opacity: 0; transform: translateY(10px);
+  transition: opacity 0.3s, transform 0.3s; pointer-events: none; z-index: 999;
+}
+#toast.show { opacity: 1; transform: translateY(0); }
+
+/* Config feedback */
+.cfg-status {
+  font-family: var(--mono); font-size: 10px; margin-top: 8px;
+  padding: 6px 10px; border: 1px solid var(--border);
+  background: var(--bg3); color: var(--muted); text-align: center;
+  letter-spacing: 1px; display: none;
+}
+.cfg-status.show { display: block; }
+.cfg-status.ok  { color: var(--ok);    border-color: var(--ok); }
+.cfg-status.err { color: var(--danger); border-color: var(--danger); }
+
+/* Sensor History Chart */
+.chart-wrap {
+  background: var(--bg2); border: 1px solid var(--border);
+  padding: 18px 20px; margin-top: 20px; position: relative;
+}
+.chart-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.chart-legend { display: flex; gap: 16px; align-items: center; }
+.legend-item {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 1px;
+}
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+.chart-range { display: flex; gap: 6px; }
+.range-btn {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1px;
+  padding: 4px 10px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); cursor: pointer; transition: all 0.2s;
+}
+.range-btn:hover  { border-color: var(--accent); color: var(--accent); }
+.range-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,212,255,0.08); }
+.chart-canvas-wrap { position: relative; height: 160px; }
+.chart-stats {
+  display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-top: 14px;
+}
+.chart-stat {
+  background: var(--bg3); border: 1px solid var(--border);
+  padding: 10px 12px; text-align: center;
+}
+.chart-stat-val {
+  font-family: var(--mono); font-size: 20px; font-weight: 700;
+  color: var(--accent); line-height: 1;
+}
+.chart-stat-lbl {
+  font-family: var(--mono); font-size: 9px; color: var(--muted);
+  letter-spacing: 2px; margin-top: 4px; text-transform: uppercase;
+}
+@media(max-width:500px){ .chart-stats { grid-template-columns: repeat(2,1fr); } }
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN SCREEN ══════════════════════════════════════════════ -->
+<div id="login-screen">
+  <div class="login-brand">
+    <div class="login-logo">NEXUS<span>SEC</span></div>
+    <div class="login-tagline">SECURITY CONTROL SYSTEM</div>
+  </div>
+
+  <div class="login-card" id="login-card">
+    <div class="login-card-title">SELECT ROLE &amp; SIGN IN</div>
+
+    <div class="role-selector">
+      <button class="role-btn active" id="role-admin-btn" onclick="selectRole('admin')">
+        <div class="role-icon">⚙</div>
+        <div class="role-name">ADMIN</div>
+        <div class="role-desc">Full control<br>Arm · Disarm · Config</div>
+      </button>
+      <button class="role-btn" id="role-viewer-btn" onclick="selectRole('viewer')">
+        <div class="role-icon">◉</div>
+        <div class="role-name">VIEWER</div>
+        <div class="role-desc">Read only<br>Monitor sensors &amp; logs</div>
+      </button>
+    </div>
+
+    <div class="login-field">
+      <label>Username</label>
+      <input class="login-input" type="text" id="login-user"
+             placeholder="Enter username" autocomplete="username" spellcheck="false">
+    </div>
+    <div class="login-field">
+      <label>Password</label>
+      <input class="login-input" type="password" id="login-pass"
+             placeholder="Enter password" autocomplete="current-password">
+    </div>
+
+    <button class="login-btn" id="login-btn" onclick="doLogin()">CONNECT</button>
+
+    <div class="login-status" id="login-status"></div>
+    <div class="login-lockout" id="login-lockout"></div>
+  </div>
+</div>
+
+<!-- ══ MAIN DASHBOARD ════════════════════════════════════════════ -->
+<div class="shell" id="dashboard" style="display:none;">
+
+  <!-- Header -->
+  <header>
+    <div>
+      <div class="logo">NEXUS<span>SEC</span></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;font-family:var(--mono);">SECURITY CONTROL SYSTEM v3.0 — MQTT CLOUD</div>
+      <div class="role-badge-header admin" id="role-badge-header">ADMIN</div>
+    </div>
+    <div class="header-meta">
+      <div class="uptime" id="uptime-display">UP: 00:00:00</div>
+      <div id="mqtt-status" class="connecting">
+        <span id="mqtt-dot"></span>
+        <span id="mqtt-label">CONNECTING...</span>
+      </div>
+      <br>
+      <button class="logout-btn" onclick="doLogout()">&#9655; LOGOUT</button>
+    </div>
+  </header>
+
+  <!-- Alert Banner -->
+  <div id="alert-banner">&#9888; INTRUSION DETECTED — ALARM ACTIVE &#9888;</div>
+
+  <!-- Mode Display -->
+  <div class="mode-display disarmed" id="mode-panel">
+    <div class="mode-label">SYSTEM STATUS</div>
+    <div class="mode-value" id="mode-text">DISARMED</div>
+  </div>
+
+  <!-- Sensor Cards -->
+  <div class="grid-3">
+    <div class="card ok" id="arm-card">
+      <div class="card-label">System</div>
+      <div class="card-value" id="arm-val" style="font-size:20px;color:var(--ok);">DISARMED</div>
+      <div class="card-sub">SECURITY STATE</div>
+    </div>
+    <div class="card" id="pir-card">
+      <div class="card-label">Motion Sensor</div>
+      <div style="display:flex;align-items:center;gap:8px;margin:6px 0;">
+        <span class="dot" id="pir-dot"></span>
+        <span class="card-value" id="pir-val" style="font-size:18px;">CLEAR</span>
+      </div>
+      <div class="card-sub">PIR — HC-SR501</div>
+    </div>
+    <div class="card" id="door-card">
+      <div class="card-label">Door Sensor</div>
+      <div style="display:flex;align-items:center;gap:8px;margin:6px 0;">
+        <span class="dot ok" id="door-dot"></span>
+        <span class="card-value" id="door-val" style="font-size:18px;">CLOSED</span>
+      </div>
+      <div class="card-sub">MAGNETIC SWITCH</div>
+    </div>
+  </div>
+
+  <!-- Controls + Settings -->
+  <div class="grid-2">
+    <!-- Control Panel -->
+    <div>
+      <div class="sec-title">Control Panel</div>
+      <div class="arm-wrap" id="arm-btn-wrap">
+        <button id="arm-btn" class="arm" onclick="toggleArm()">ARM SYSTEM</button>
+      </div>
+      <div class="card" style="margin-bottom:0;">
+        <div class="status-row">
+          <span class="status-name">Logged In As</span>
+          <span class="badge info" id="status-user">—</span>
+        </div>
+        <div class="status-row">
+          <span class="status-name">Last Action</span>
+          <span class="badge off" id="last-action-badge">—</span>
+        </div>
+        <div class="status-row">
+          <span class="status-name">MQTT Broker</span>
+          <span class="badge ok" id="broker-badge">HiveMQ Cloud</span>
+        </div>
+        <div class="status-row">
+          <span class="status-name">GSM Module</span>
+          <span class="badge ok">READY</span>
+        </div>
+        <div class="status-row">
+          <span class="status-name">Alert Count</span>
+          <span class="badge off" id="alert-count-badge">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div>
+      <div class="sec-title">System Settings</div>
+      <div class="card">
+        <div class="viewer-notice" id="viewer-notice">⊘ VIEW ONLY — CONFIG DISABLED</div>
+        <div class="admin-only">
+          <div class="field">
+            <label>Phone Number</label>
+            <input type="tel" id="cfg-phone" placeholder="+201XXXXXXXXX" maxlength="15">
+          </div>
+          <div class="field">
+            <label>Arm Code (4 digits)</label>
+            <input type="password" id="cfg-arm" placeholder="e.g. 1234" maxlength="4" pattern="\d{4}">
+          </div>
+          <div class="field">
+            <label>Disarm Code (4 digits)</label>
+            <input type="password" id="cfg-disarm" placeholder="e.g. 5678" maxlength="4" pattern="\d{4}">
+          </div>
+          <div class="btn-row">
+            <button class="btn primary" id="save-btn" onclick="saveSettings()">SAVE CONFIG</button>
+            <button class="btn" id="sms-btn" onclick="testSMS()">TEST SMS</button>
+          </div>
+        </div>
+        <div class="cfg-status" id="cfg-status"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sensor History Chart -->
+  <div class="chart-wrap">
+    <div class="chart-header">
+      <div class="sec-title" style="margin-bottom:0;border:none;padding:0;">Sensor History</div>
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+        <div class="chart-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#ff3b3b;"></div>PIR MOTION</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#00d4ff;"></div>DOOR</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ffaa00;"></div>ALARM</div>
+        </div>
+        <div class="chart-range">
+          <button class="range-btn active" onclick="setChartRange(15,this)">15M</button>
+          <button class="range-btn"        onclick="setChartRange(30,this)">30M</button>
+          <button class="range-btn"        onclick="setChartRange(60,this)">1H</button>
+        </div>
+      </div>
+    </div>
+    <div class="chart-canvas-wrap">
+      <canvas id="sensor-chart"></canvas>
+    </div>
+    <div class="chart-stats">
+      <div class="chart-stat"><div class="chart-stat-val" id="stat-pir-count">0</div><div class="chart-stat-lbl">PIR triggers</div></div>
+      <div class="chart-stat"><div class="chart-stat-val" id="stat-door-count">0</div><div class="chart-stat-lbl">Door opens</div></div>
+      <div class="chart-stat"><div class="chart-stat-val" id="stat-alarm-count">0</div><div class="chart-stat-lbl">Alarms</div></div>
+      <div class="chart-stat"><div class="chart-stat-val" id="stat-last-event">—</div><div class="chart-stat-lbl">Last event</div></div>
+    </div>
+  </div>
+
+  <!-- Event Log -->
+  <div style="margin-top:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border);">
+      <div class="sec-title" style="margin-bottom:0;border:none;padding:0;">Event Log</div>
+      <button class="btn" style="flex:0;padding:6px 14px;font-size:10px;" onclick="clearLog()">CLEAR</button>
+    </div>
+    <div id="log-list">
+      <div class="log-entry" style="color:var(--muted);">— waiting for MQTT connection... —</div>
+    </div>
+  </div>
+
+</div><!-- end .shell -->
+
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+//  NEXUS SECURITY — MERGED SCRIPT
+//  Login: role selector + username/password authenticated via HiveMQ
+//  Dashboard: full sensor UI from code 1
+// ══════════════════════════════════════════════════════════════════
+
+// ── MQTT CONFIG ───────────────────────────────────────────────────
+const MQTT_HOST   = 'nexus-4408dcb8.a01.euc1.aws.hivemq.cloud';
+const MQTT_PORT   = 8884;
+const TOPIC_STATE = 'esp32/nexus/state';
+const TOPIC_LOG   = 'esp32/nexus/log';
+const TOPIC_CMD   = 'esp32/nexus/cmd';
+
+// Map HiveMQ usernames to roles.
+// Users not listed fall back to the role they selected on the login screen.
+const ROLE_MAP = {
+  'omarmarei': 'admin',
+  'omarkhaled':    'viewer',
+  'omarsaleh':    'viewer',
+};
+
+// ── RUNTIME STATE ─────────────────────────────────────────────────
+let mqttClient        = null;
+let currentRole       = null;
+let currentUser       = null;
+let state             = { armed:false, pir:false, door:false, alarm:false };
+let uptimeSecs        = 0;
+let alertCount        = 0;
+let selectedRole      = 'admin';
+let loginAttempts     = 0;
+let loginLockoutTimer = null;
+const MAX_LOGIN_ATTEMPTS = 5;
+
+// ── UPTIME / CLOCK ────────────────────────────────────────────────
+setInterval(() => {
+  uptimeSecs++;
+  const h = String(Math.floor(uptimeSecs / 3600)).padStart(2,'0');
+  const m = String(Math.floor((uptimeSecs % 3600) / 60)).padStart(2,'0');
+  const s = String(uptimeSecs % 60).padStart(2,'0');
+  document.getElementById('uptime-display').textContent = 'UP: ' + h + ':' + m + ':' + s;
+}, 1000);
+
+// ── ROLE SELECTOR ────────────────────────────────────────────────
+function selectRole(role) {
+  selectedRole = role;
+  document.getElementById('role-admin-btn').classList.toggle('active', role === 'admin');
+  document.getElementById('role-viewer-btn').classList.toggle('active', role === 'viewer');
+}
+
+// ── LOGIN ─────────────────────────────────────────────────────────
+function doLogin() {
+  if (loginAttempts >= MAX_LOGIN_ATTEMPTS) return;
+
+  const user = document.getElementById('login-user').value.trim();
+  const pass = document.getElementById('login-pass').value;
+
+  if (!user || !pass) {
+    setLoginStatus('ENTER USERNAME AND PASSWORD', 'error');
+    return;
+  }
+
+  setLoginStatus('CONNECTING TO BROKER...', 'connecting');
+  document.getElementById('login-btn').disabled = true;
+
+  const clientId = 'nexus-' + selectedRole + '-' + Math.random().toString(16).slice(2, 8);
+
+  const client = new Paho.Client(MQTT_HOST, MQTT_PORT, '/mqtt', clientId);
+
+  client.connect({
+    useSSL:            true,
+    userName:          user,
+    password:          pass,
+    keepAliveInterval: 60,
+    cleanSession:      true,
+    timeout:           10,
+
+    onSuccess: () => {
+      loginAttempts = 0;
+
+      const mappedRole = ROLE_MAP[user] || selectedRole;
+      currentRole = mappedRole;
+      currentUser = user;
+      mqttClient  = client;
+
+      client.onConnectionLost = () => {
+        setMqttStatus('error', 'DISCONNECTED');
+        toast('Connection lost — returning to login...');
+        setTimeout(doLogout, 2000);
+      };
+      client.onMessageArrived = onMqttMessage;
+
+      client.subscribe(TOPIC_STATE);
+      client.subscribe(TOPIC_LOG);
+
+      showDashboard();
+    },
+
+    onFailure: (err) => {
+      document.getElementById('login-btn').disabled = false;
+      loginAttempts++;
+
+      if (err.errorCode === 4 || err.errorCode === 5) {
+        const rem = MAX_LOGIN_ATTEMPTS - loginAttempts;
+        if (rem <= 0) {
+          startLoginLockout();
+        } else {
+          setLoginStatus(
+            'INVALID CREDENTIALS — ' + rem + ' ATTEMPT' + (rem === 1 ? '' : 'S') + ' LEFT',
+            'error'
+          );
+          shakeCard();
+        }
+      } else {
+        setLoginStatus('CONNECTION ERROR — CHECK NETWORK', 'error');
+        shakeCard();
+      }
+    }
+  });
+}
+
+function showDashboard() {
+  const loginScr = document.getElementById('login-screen');
+  loginScr.classList.add('hidden');
+  setTimeout(() => { loginScr.style.display = 'none'; }, 500);
+
+  const dash = document.getElementById('dashboard');
+  dash.style.display = 'block';
+
+  applyRole(currentRole, currentUser);
+  setMqttStatus('connected', 'CONNECTED');
+  document.getElementById('broker-badge').className = 'badge ok';
+  toast('Welcome, ' + currentUser + ' [' + currentRole.toUpperCase() + ']');
+
+  startChart();
+  requestNotificationPermission();
+}
+
+function applyRole(role, user) {
+  // Role badge in header
+  const badge = document.getElementById('role-badge-header');
+  badge.textContent = role.toUpperCase();
+  badge.className   = 'role-badge-header ' + role;
+
+  // Logged-in user in status panel
+  document.getElementById('status-user').textContent = user;
+
+  if (role === 'viewer') {
+    // Disable arm button
+    const btn = document.getElementById('arm-btn');
+    btn.disabled = true;
+    document.getElementById('arm-btn-wrap').classList.add('viewer-lock');
+
+    // Grey out config form
+    document.getElementById('dashboard').classList.add('viewer-mode');
+    document.getElementById('viewer-notice').classList.add('show');
+    ['cfg-phone','cfg-arm','cfg-disarm'].forEach(id => {
+      document.getElementById(id).disabled = true;
+    });
+    document.getElementById('save-btn').disabled = true;
+    document.getElementById('sms-btn').disabled  = true;
+  }
+}
+
+function setLoginStatus(msg, type) {
+  const el = document.getElementById('login-status');
+  el.textContent = msg;
+  el.className   = 'login-status ' + (type || '');
+}
+
+function shakeCard() {
+  const card = document.getElementById('login-card');
+  card.classList.add('shake');
+  setTimeout(() => card.classList.remove('shake'), 500);
+}
+
+function startLoginLockout() {
+  const duration = 30000;
+  const until    = Date.now() + duration;
+  document.getElementById('login-btn').disabled = true;
+  setLoginStatus('TOO MANY FAILED ATTEMPTS', 'error');
+
+  clearInterval(loginLockoutTimer);
+  loginLockoutTimer = setInterval(() => {
+    const left = Math.ceil((until - Date.now()) / 1000);
+    if (left <= 0) {
+      clearInterval(loginLockoutTimer);
+      loginAttempts = 0;
+      document.getElementById('login-btn').disabled = false;
+      document.getElementById('login-lockout').textContent = '';
+      setLoginStatus('', '');
+    } else {
+      document.getElementById('login-lockout').textContent =
+        'LOCKED — TRY AGAIN IN ' + left + 's';
+    }
+  }, 500);
+}
+
+// Enter key submits login
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const dash = document.getElementById('dashboard');
+    if (!dash || dash.style.display === 'none' || dash.style.display === '') doLogin();
+  }
+});
+
+// ── LOGOUT ────────────────────────────────────────────────────────
+function doLogout() {
+  if (mqttClient && mqttClient.isConnected()) mqttClient.disconnect();
+  mqttClient  = null;
+  currentRole = null;
+  currentUser = null;
+  state       = { armed:false, pir:false, door:false, alarm:false };
+  uptimeSecs  = 0;
+
+  // Reset viewer-mode UI
+  const dash = document.getElementById('dashboard');
+  dash.classList.remove('viewer-mode');
+  dash.style.display = 'none';
+  document.getElementById('viewer-notice').classList.remove('show');
+  document.getElementById('arm-btn-wrap').classList.remove('viewer-lock');
+  ['cfg-phone','cfg-arm','cfg-disarm'].forEach(id => {
+    document.getElementById(id).disabled = false;
+  });
+  document.getElementById('save-btn').disabled = false;
+  document.getElementById('sms-btn').disabled  = false;
+  document.getElementById('arm-btn').disabled  = false;
+
+  // Show login screen
+  const loginScr = document.getElementById('login-screen');
+  loginScr.style.display = 'flex';
+  loginScr.classList.remove('hidden');
+  document.getElementById('login-pass').value = '';
+  document.getElementById('login-status').textContent  = '';
+  document.getElementById('login-lockout').textContent = '';
+  document.getElementById('login-btn').disabled = false;
+
+  toast('Logged out');
+}
+
+// ── MQTT HELPERS ──────────────────────────────────────────────────
+function setMqttStatus(type, label) {
+  const el = document.getElementById('mqtt-status');
+  el.className = type;
+  document.getElementById('mqtt-label').textContent = label;
+}
+
+function onMqttMessage(msg) {
+  const topic   = msg.destinationName;
+  const payload = msg.payloadString;
+  if (topic === TOPIC_STATE) {
+    try { updateUI(JSON.parse(payload)); } catch(e) { console.error('Bad JSON', e); }
+  } else if (topic === TOPIC_LOG) {
+    prependLogEntry(payload);
+  }
+}
+
+function publishCmd(cmd) {
+  if (currentRole !== 'admin') { toast('Access denied — viewer mode'); return; }
+  if (!mqttClient || !mqttClient.isConnected()) { toast('Not connected to broker'); return; }
+  const msg = new Paho.Message(cmd);
+  msg.destinationName = TOPIC_CMD;
+  msg.qos = 1;
+  mqttClient.send(msg);
+}
+
+// ── UI UPDATE FROM STATE ──────────────────────────────────────────
+function updateUI(d) {
+  if (d.alarm && !state.alarm)              sendLocalNotification('⚠️ NEXUS ALARM', 'Intruder detected at your property!');
+  if (d.armed && d.pir  && !state.pir)     sendLocalNotification('⚠️ Motion Detected', 'PIR sensor triggered while armed.');
+  if (d.armed && d.door && !state.door)    sendLocalNotification('⚠️ Door Opened', 'Door sensor triggered while armed.');
+  state = d;
+
+  // Mode panel
+  const modePanel = document.getElementById('mode-panel');
+  const modeText  = document.getElementById('mode-text');
+  if (d.alarm) {
+    modePanel.className = 'mode-display alarm';
+    modeText.textContent = 'ALARM';
+  } else if (d.armed) {
+    modePanel.className = 'mode-display armed';
+    modeText.textContent = 'ARMED';
+  } else {
+    modePanel.className = 'mode-display disarmed';
+    modeText.textContent = 'DISARMED';
+  }
+
+  // System card
+  const armVal = document.getElementById('arm-val');
+  armVal.textContent = d.armed ? 'ARMED' : 'DISARMED';
+  armVal.style.color = d.armed ? 'var(--danger)' : 'var(--ok)';
+  document.getElementById('arm-card').className = 'card ' + (d.armed ? 'danger' : 'ok');
+
+  // Arm button (admin only)
+  if (currentRole === 'admin') {
+    const btn = document.getElementById('arm-btn');
+    btn.className   = d.armed ? 'disarm' : 'arm';
+    btn.textContent = d.armed ? 'DISARM SYSTEM' : 'ARM SYSTEM';
+  }
+
+  // PIR
+  setDot('pir-dot', d.pir ? 'danger' : '');
+  document.getElementById('pir-val').textContent = d.pir ? 'TRIGGERED' : 'CLEAR';
+  document.getElementById('pir-card').className  = 'card ' + (d.pir ? 'danger' : 'ok');
+
+  // Door
+  setDot('door-dot', d.door ? 'danger' : 'ok');
+  document.getElementById('door-val').textContent = d.door ? 'OPEN' : 'CLOSED';
+  document.getElementById('door-card').className  = 'card ' + (d.door ? 'danger' : 'ok');
+
+  // Alert banner
+  if (d.armed && (d.pir || d.door || d.alarm)) {
+    document.getElementById('alert-banner').classList.add('show');
+    alertCount++;
+    const badge = document.getElementById('alert-count-badge');
+    badge.textContent = alertCount;
+    badge.className   = 'badge danger';
+  } else {
+    document.getElementById('alert-banner').classList.remove('show');
+  }
+
+  if (d.log && d.log.length) renderLog(d.log);
+}
+
+// ── LOG ───────────────────────────────────────────────────────────
+function renderLog(entries) {
+  const el = document.getElementById('log-list');
+  el.innerHTML = entries.map(e => {
+    let cls = 'log-entry';
+    if (e.includes('ALARM') || e.includes('triggered') || e.includes('opened')) cls += ' alert-log';
+    else if (e.includes('isarmed') || e.includes('Safe')) cls += ' ok-log';
+    return '<div class="' + cls + '">' + e + '</div>';
+  }).join('');
+}
+
+function prependLogEntry(entry) {
+  const el  = document.getElementById('log-list');
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  if (entry.includes('ALARM') || entry.includes('triggered')) div.classList.add('alert-log');
+  div.textContent = entry;
+  el.insertBefore(div, el.firstChild);
+  while (el.children.length > 20) el.removeChild(el.lastChild);
+}
+
+function clearLog() {
+  document.getElementById('log-list').innerHTML =
+    '<div class="log-entry" style="color:var(--muted);">— log cleared —</div>';
+  toast('Log cleared');
+}
+
+// ── CONTROLS ──────────────────────────────────────────────────────
+function toggleArm() {
+  if (currentRole !== 'admin') { toast('Access denied — viewer mode'); return; }
+  const cmd = state.armed ? 'DISARM' : 'ARM';
+  publishCmd(cmd);
+  const badge = document.getElementById('last-action-badge');
+  badge.textContent = cmd;
+  badge.className   = 'badge ' + (cmd === 'ARM' ? 'danger' : 'ok');
+  toast(cmd === 'ARM' ? 'Arming system...' : 'Disarming system...');
+}
+
+function saveSettings() {
+  if (currentRole !== 'admin') { toast('Access denied'); return; }
+  const phone  = document.getElementById('cfg-phone').value.trim();
+  const armPIN = document.getElementById('cfg-arm').value.trim();
+  const disPIN = document.getElementById('cfg-disarm').value.trim();
+  if (armPIN && !/^\d{4}$/.test(armPIN)) { toast('ARM code must be 4 digits'); return; }
+  if (disPIN && !/^\d{4}$/.test(disPIN)) { toast('DISARM code must be 4 digits'); return; }
+  if (armPIN && disPIN && armPIN === disPIN) { toast('ARM and DISARM codes must differ'); return; }
+  if (phone.length >= 10) publishCmd('PHONE=' + phone);
+  if (armPIN && disPIN)   publishCmd('PIN=' + armPIN + ':' + disPIN);
+  toast('Config sent to ESP32');
+  showCfgStatus('Commands sent via MQTT', 'ok');
+}
+
+function testSMS() {
+  if (currentRole !== 'admin') { toast('Access denied'); return; }
+  publishCmd('TESTSMS');
+  toast('Test SMS command sent');
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────
+function setDot(id, cls) {
+  document.getElementById(id).className = 'dot ' + cls;
+}
+
+function showCfgStatus(msg, type) {
+  const el = document.getElementById('cfg-status');
+  el.textContent = msg;
+  el.className = 'cfg-status show ' + type;
+  setTimeout(() => { el.className = 'cfg-status'; }, 5000);
+}
+
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ══ SENSOR HISTORY CHART ═════════════════════════════════════════
+const CHART_INTERVAL_MS = 10000;
+const CHART_MAX_POINTS  = 360;
+
+let chartRangeMinutes = 15;
+let chartInstance     = null;
+let chartHistory      = [];
+
+let statPirCount   = 0;
+let statDoorCount  = 0;
+let statAlarmCount = 0;
+let statLastEvent  = '—';
+
+let prevPir   = false;
+let prevDoor  = false;
+let prevAlarm = false;
+
+function recordChartSample() {
+  const now = Date.now();
+  const s   = state;
+  if (s.pir   && !prevPir)   { statPirCount++;   statLastEvent = fmtTime(now); }
+  if (s.door  && !prevDoor)  { statDoorCount++;  statLastEvent = fmtTime(now); }
+  if (s.alarm && !prevAlarm) { statAlarmCount++; statLastEvent = fmtTime(now); }
+  prevPir   = s.pir;
+  prevDoor  = s.door;
+  prevAlarm = s.alarm;
+
+  chartHistory.push({ t:now, pir:s.pir?1:0, door:s.door?1:0, alarm:s.alarm?1:0 });
+  if (chartHistory.length > CHART_MAX_POINTS) chartHistory.shift();
+  updateChart();
+  updateStatCards();
+}
+
+function fmtTime(ts) {
+  const d = new Date(ts);
+  return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+}
+
+function getWindowedData() {
+  const cutoff = Date.now() - chartRangeMinutes * 60 * 1000;
+  return chartHistory.filter(p => p.t >= cutoff);
+}
+
+function initChart() {
+  const ctx = document.getElementById('sensor-chart').getContext('2d');
+  Chart.defaults.color = '#4a6a8a';
+  Chart.defaults.font.family = "'Share Tech Mono', monospace";
+  Chart.defaults.font.size   = 10;
+
+  chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label:'PIR Motion', data:[], borderColor:'#ff3b3b',
+          backgroundColor:'rgba(255,59,59,0.15)', borderWidth:2,
+          pointRadius:3, pointHoverRadius:5, pointBackgroundColor:'#ff3b3b',
+          stepped:true, fill:true, spanGaps:false
+        },
+        {
+          label:'Door', data:[], borderColor:'#00d4ff',
+          backgroundColor:'rgba(0,212,255,0.10)', borderWidth:2,
+          pointRadius:3, pointHoverRadius:5, pointBackgroundColor:'#00d4ff',
+          stepped:true, fill:true, spanGaps:false
+        },
+        {
+          label:'Alarm', data:[], borderColor:'#ffaa00',
+          backgroundColor:'rgba(255,170,0,0.10)', borderWidth:2,
+          pointRadius:3, pointHoverRadius:5, pointBackgroundColor:'#ffaa00',
+          stepped:true, fill:true, spanGaps:false
+        }
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, animation:{duration:300},
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          backgroundColor:'#0d1420', borderColor:'#1a2d44', borderWidth:1,
+          titleColor:'#c8ddf0', bodyColor:'#4a6a8a', padding:10,
+          callbacks:{ label: ctx => ctx.dataset.label + ': ' + (ctx.raw !== null ? 'ACTIVE' : 'CLEAR') }
+        }
+      },
+      scales:{
+        x:{
+          grid:{color:'rgba(26,45,68,0.6)',lineWidth:0.5},
+          ticks:{color:'#4a6a8a',maxTicksLimit:6,maxRotation:0},
+          border:{color:'#1a2d44'}
+        },
+        y:{
+          min:0, max:3.6,
+          grid:{color:'rgba(26,45,68,0.6)',lineWidth:0.5},
+          border:{color:'#1a2d44'},
+          ticks:{
+            color:'#4a6a8a', stepSize:1,
+            callback: val => val===2.8?'PIR':val===1.8?'DOOR':val===0.8?'ALARM':''
+          }
+        }
+      }
+    }
+  });
+}
+
+function updateChart() {
+  if (!chartInstance) return;
+  const pts = getWindowedData();
+  chartInstance.data.labels           = pts.map(p => {
+    const d = new Date(p.t);
+    return d.getHours().toString().padStart(2,'0')+':'+
+           d.getMinutes().toString().padStart(2,'0')+':'+
+           d.getSeconds().toString().padStart(2,'0');
+  });
+  chartInstance.data.datasets[0].data = pts.map(p => p.pir   ? 2.8 : null);
+  chartInstance.data.datasets[1].data = pts.map(p => p.door  ? 1.8 : null);
+  chartInstance.data.datasets[2].data = pts.map(p => p.alarm ? 0.8 : null);
+  chartInstance.update('none');
+}
+
+function updateStatCards() {
+  document.getElementById('stat-pir-count').textContent   = statPirCount;
+  document.getElementById('stat-door-count').textContent  = statDoorCount;
+  document.getElementById('stat-alarm-count').textContent = statAlarmCount;
+  document.getElementById('stat-last-event').textContent  = statLastEvent;
+}
+
+function setChartRange(minutes, btn) {
+  chartRangeMinutes = minutes;
+  document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  updateChart();
+}
+
+function startChart() {
+  if (typeof Chart === 'undefined') { setTimeout(startChart, 200); return; }
+  initChart();
+  setInterval(recordChartSample, CHART_INTERVAL_MS);
+  setTimeout(recordChartSample, 1000);
+}
+
+// ══ NOTIFICATIONS ════════════════════════════════════════════════
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'granted') return;
+  if (Notification.permission !== 'denied') await Notification.requestPermission();
+}
+
+function sendLocalNotification(title, body) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  navigator.serviceWorker.ready.then(reg => {
+    reg.showNotification(title, {
+      body, icon:'/nexus-security/icon-192.png', badge:'/nexus-security/icon-192.png',
+      vibrate:[200,100,200,100,200], tag:'nexus-alert', renotify:true,
+      actions:[{action:'disarm',title:'Disarm'},{action:'view',title:'Open dashboard'}]
+    });
+  });
+}
+
+// ══ PWA ══════════════════════════════════════════════════════════
+let deferredInstallPrompt = null;
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/nexus-security/sw.js')
+    .then(reg => {
+      navigator.serviceWorker.addEventListener('message', event => {
+        if (event.data && event.data.action === 'DISARM') {
+          publishCmd('DISARM');
+          toast('Disarmed from notification');
+        }
+      });
+    })
+    .catch(err => console.warn('SW failed:', err));
+}
+
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+});
+</script>
+</body>
+</html>
