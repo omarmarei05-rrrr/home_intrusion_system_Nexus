@@ -1,10 +1,3 @@
-// ╔══════════════════════════════════════════════════════════════╗
-// ║        STM32F411 BLACK PILL — SECURITY SYSTEM               ║
-// ║        FreeRTOS Edition v5.1 — ESP32 WiFi UI Integration    ║
-// ║        FIX: trim() on all ESP commands, debug echo,         ║
-// ║             xTestSmsSem binary safe-give, PIN sanity check  ║
-// ╚══════════════════════════════════════════════════════════════╝
-
 #include <STM32FreeRTOS.h>
 #include <Wire.h>
 #include <hd44780.h>
@@ -12,17 +5,11 @@
 #include <Keypad.h>
 #include <SoftwareSerial.h>
 
-SoftwareSerial ESPSerial(PA4, PA5);  // RX=PA4, TX=PA5
+SoftwareSerial ESPSerial(PA4, PA5);  
 #define ESP_SERIAL ESPSerial
 
-// ═══════════════════════════════════════════════════════════════
-//  LCD
-// ═══════════════════════════════════════════════════════════════
 hd44780_I2Cexp lcd;
 
-// ═══════════════════════════════════════════════════════════════
-//  KEYPAD
-// ═══════════════════════════════════════════════════════════════
 const byte ROWS = 4;
 const byte COLS = 4;
 
@@ -38,9 +25,6 @@ byte colPins[COLS] = {PB3, PB10, PB1, PB0};
 
 Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 
-// ═══════════════════════════════════════════════════════════════
-//  PINS
-// ═══════════════════════════════════════════════════════════════
 #define PIR_PIN       PA1
 #define MAG_PIN       PA12
 #define BUZZER_PIN    PB12
@@ -48,10 +32,6 @@ Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 #define RST_PIN       PA8
 #define SIM_SERIAL    Serial1
 
-// ═══════════════════════════════════════════════════════════════
-//  SECURITY CODES & TIMING
-//  Mutable — updated remotely via ESP32 CMD:PIN= and CMD:PHONE=
-// ═══════════════════════════════════════════════════════════════
 String ARM_CODE    = "1234";
 String DISARM_CODE = "5678";
 String SMS_TARGET  = "+201553071798";
@@ -61,9 +41,6 @@ const unsigned long SIREN_LOW_FREQ  = 800;
 const unsigned long SIREN_HIGH_FREQ = 1800;
 const unsigned long SIREN_INTERVAL  = 400;
 
-// ═══════════════════════════════════════════════════════════════
-//  FSM
-// ═══════════════════════════════════════════════════════════════
 enum State {
   STATE_ARMED,
   STATE_ALERT,
@@ -74,26 +51,17 @@ enum State {
 volatile State         currentState   = STATE_DISARMED;
 volatile unsigned long alertStartTime = 0;
 
-// ═══════════════════════════════════════════════════════════════
-//  FLAGS
-// ═══════════════════════════════════════════════════════════════
 volatile bool userIsTyping     = false;
 volatile bool smsArmRequest    = false;
 volatile bool smsDisarmRequest = false;
 volatile bool espArmRequest    = false;
 volatile bool espDisarmRequest = false;
 
-// ═══════════════════════════════════════════════════════════════
-//  LCD MESSAGE STRUCT
-// ═══════════════════════════════════════════════════════════════
 struct LcdMsg {
   char line1[17];
   char line2[17];
 };
 
-// ═══════════════════════════════════════════════════════════════
-//  RTOS HANDLES
-// ═══════════════════════════════════════════════════════════════
 QueueHandle_t     xLcdQueue;
 SemaphoreHandle_t xAlarmSem;
 SemaphoreHandle_t xSmsSem;
@@ -104,9 +72,6 @@ SemaphoreHandle_t xI2CMutex;
 SemaphoreHandle_t xBuzzerMutex;
 SemaphoreHandle_t xEspSerialMutex;
 
-// ═══════════════════════════════════════════════════════════════
-//  HELPERS
-// ═══════════════════════════════════════════════════════════════
 void lcdSend(const char* l1, const char* l2) {
   LcdMsg msg;
   strncpy(msg.line1, l1, 16); msg.line1[16] = '\0';
@@ -152,7 +117,6 @@ void safeBeep(int times, int ms) {
   xSemaphoreGive(xBuzzerMutex);
 }
 
-// FIX: helper to check if a string is exactly 4 decimal digits
 bool isFourDigits(const String& s) {
   if (s.length() != 4) return false;
   for (int i = 0; i < 4; i++) {
@@ -221,11 +185,11 @@ void parseSmsCommands() {
     String body = resp.substring(bodyStart, bodyEnd);
     body.trim();
 
-    // ── Keep a copy before uppercasing for value extraction ──
+    
     String bodyRaw = body;
     body.toUpperCase();
 
-    // ── ARM / DISARM system (no value) ───────────────────────
+    
     if (body == "ARM") {
       smsArmRequest = true;
       lcdSend("SMS: ARM cmd", "Arming...");
@@ -237,9 +201,9 @@ void parseSmsCommands() {
       sendReplySms("Security system DISARMED via SMS.");
     }
 
-    // ── ARM=XXXX  →  update arm PIN ──────────────────────────
+    
     else if (body.startsWith("ARM=")) {
-      String newPin = body.substring(4);  // already uppercased, digits only anyway
+      String newPin = body.substring(4);  
       newPin.trim();
       if (isFourDigits(newPin)) {
         ARM_CODE = newPin;
@@ -250,7 +214,7 @@ void parseSmsCommands() {
       }
     }
 
-    // ── DISARM=XXXX  →  update disarm PIN ────────────────────
+    
     else if (body.startsWith("DISARM=")) {
       String newPin = body.substring(7);
       newPin.trim();
@@ -263,9 +227,9 @@ void parseSmsCommands() {
       }
     }
 
-    // ── PHONE=+XXXXXXXXXXX  →  update SMS target ─────────────
+    
     else if (body.startsWith("PHONE=")) {
-      // Use bodyRaw here so the '+' and number case are preserved
+      
       String newPhone = bodyRaw.substring(6);
       newPhone.trim();
       if (newPhone.length() >= 10) {
@@ -279,7 +243,7 @@ void parseSmsCommands() {
       }
     }
 
-    // ── Unknown ───────────────────────────────────────────────
+    
     else {
       sendReplySms("Unknown cmd. Valid: ARM, DISARM, ARM=XXXX, DISARM=XXXX, PHONE=+XX");
     }
@@ -288,9 +252,7 @@ void parseSmsCommands() {
     searchPos = bodyEnd + 1;
   }
 }
-// ═══════════════════════════════════════════════════════════════
-//  TASK 1 — SENSOR TASK
-// ═══════════════════════════════════════════════════════════════
+
 void SensorTask(void *pvParameters) {
   bool lastPir  = false;
   bool lastDoor = false;
@@ -317,9 +279,6 @@ void SensorTask(void *pvParameters) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  TASK 2 — ALARM TASK
-// ═══════════════════════════════════════════════════════════════
 void AlarmTask(void *pvParameters) {
   bool     sirenHigh   = false;
   bool     ledState    = false;
@@ -339,7 +298,7 @@ void AlarmTask(void *pvParameters) {
         digitalRead(MAG_PIN) == HIGH);
     }
 
-    // ── ESP32 ARM
+    
     if (espArmRequest) {
       espArmRequest = false;
       if (s == STATE_DISARMED) {
@@ -352,7 +311,7 @@ void AlarmTask(void *pvParameters) {
       }
     }
 
-    // ── ESP32 DISARM
+    
     if (espDisarmRequest) {
       espDisarmRequest = false;
       if (s == STATE_ARMED || s == STATE_ALERT || s == STATE_ALARM) {
@@ -370,7 +329,7 @@ void AlarmTask(void *pvParameters) {
       }
     }
 
-    // ── SMS ARM
+    
     if (smsArmRequest) {
       smsArmRequest = false;
       if (s == STATE_DISARMED) {
@@ -383,7 +342,7 @@ void AlarmTask(void *pvParameters) {
       }
     }
 
-    // ── SMS DISARM
+    
     if (smsDisarmRequest) {
       smsDisarmRequest = false;
       if (s == STATE_ARMED || s == STATE_ALERT || s == STATE_ALARM) {
@@ -401,7 +360,7 @@ void AlarmTask(void *pvParameters) {
       }
     }
 
-    // ── ARMED
+    
     if (s == STATE_ARMED) {
       digitalWrite(LED_PIN,    HIGH);
       digitalWrite(BUZZER_PIN, LOW);
@@ -417,7 +376,7 @@ void AlarmTask(void *pvParameters) {
       continue;
     }
 
-    // ── ALERT
+    
     if (s == STATE_ALERT) {
       uint32_t elapsed = millis() - alertStartTime;
       if (!userIsTyping) {
@@ -452,7 +411,7 @@ void AlarmTask(void *pvParameters) {
       continue;
     }
 
-    // ── ALARM
+    
     if (s == STATE_ALARM) {
       uint32_t now = millis();
       if (now - sirenToggle >= SIREN_INTERVAL) {
@@ -483,14 +442,11 @@ void AlarmTask(void *pvParameters) {
       continue;
     }
 
-    // ── DISARMED
+    
     vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  TASK 3 — GSM TASK
-// ═══════════════════════════════════════════════════════════════
 void GSMTask(void *pvParameters) {
   SIM_SERIAL.begin(9600);
   vTaskDelay(pdMS_TO_TICKS(100));
@@ -570,9 +526,6 @@ void GSMTask(void *pvParameters) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  TASK 4 — UI TASK
-// ═══════════════════════════════════════════════════════════════
 void UITask(void *pvParameters) {
   String enteredCode   = "";
   int    wrongAttempts = 0;
@@ -670,29 +623,15 @@ void UITask(void *pvParameters) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  TASK 5 — ESP TASK
-//  Parses all commands from the ESP32 web dashboard
-//
-//  KEY FIXES vs v5:
-//  1. cmd.trim() is now the FIRST thing done — strips the \r
-//     that ESP32 println() appends (causes all strcmp to fail)
-//  2. Debug echo: every received command is echoed back as
-//     LOG:RX=... so you can see it in the web dashboard log
-//  3. isFourDigits() used instead of length()==4 to reject
-//     non-numeric PINs that could crash keypad comparison
-//  4. xTestSmsSem give wrapped in a uxSemaphoreGetCount guard
-//     to avoid counting above 1 on repeated TEST SMS presses
-// ═══════════════════════════════════════════════════════════════
 void ESPTask(void *pvParameters) {
   for (;;) {
     if (ESP_SERIAL.available()) {
       String cmd = ESP_SERIAL.readStringUntil('\n');
 
-      // FIX 1: Strip \r and any surrounding whitespace FIRST.
-      // ESP32 Serial2.println() sends "CMD:xxx\r\n".
-      // readStringUntil('\n') stops at \n but keeps the \r,
-      // so without trim() every string comparison fails silently.
+      
+      
+      
+      
       cmd.trim();
 
       if (cmd.length() == 0) {
@@ -700,14 +639,14 @@ void ESPTask(void *pvParameters) {
         continue;
       }
 
-      // FIX 2: Echo received command back to web log for debugging.
-      // You will see "RX=CMD:PIN=1234:5678" in the event log,
-      // confirming the STM32 received the command intact.
+      
+      
+      
       xSemaphoreTake(xEspSerialMutex, portMAX_DELAY);
       ESP_SERIAL.println("LOG:RX=" + cmd);
       xSemaphoreGive(xEspSerialMutex);
 
-      // ── Basic arm/disarm ────────────────────────────────────
+      
       if (cmd == "CMD:ARM") {
         espArmRequest = true;
       }
@@ -716,9 +655,9 @@ void ESPTask(void *pvParameters) {
         espDisarmRequest = true;
       }
 
-      // ── Test SMS: CMD:TESTSMS ───────────────────────────────
-      // FIX 4: Only give semaphore if not already pending,
-      // preventing counter from accumulating on rapid clicks.
+      
+      
+      
       if (cmd == "CMD:TESTSMS") {
         if (uxSemaphoreGetCount(xTestSmsSem) == 0) {
           xSemaphoreGive(xTestSmsSem);
@@ -726,13 +665,13 @@ void ESPTask(void *pvParameters) {
         lcdSend("Test SMS queued", "");
       }
 
-      // ── Update phone number: CMD:PHONE=+201XXXXXXXXX ────────
+      
       if (cmd.startsWith("CMD:PHONE=")) {
-        String newPhone = cmd.substring(10);  // skip "CMD:PHONE="
+        String newPhone = cmd.substring(10);  
         newPhone.trim();
         if (newPhone.length() >= 10) {
           SMS_TARGET = newPhone;
-          // Show on LCD (truncate to 16 chars)
+          
           char l2[17];
           newPhone.toCharArray(l2, 17);
           lcdFlushAndSend("Phone updated:", l2);
@@ -747,10 +686,10 @@ void ESPTask(void *pvParameters) {
         }
       }
 
-      // ── Update PINs: CMD:PIN=ARMCODE:DISARMCODE ─────────────
-      // e.g. CMD:PIN=1234:5678
+      
+      
       if (cmd.startsWith("CMD:PIN=")) {
-        String payload = cmd.substring(8);   // skip "CMD:PIN="
+        String payload = cmd.substring(8);   
         payload.trim();
         int sep = payload.indexOf(':');
 
@@ -760,8 +699,8 @@ void ESPTask(void *pvParameters) {
           newArm.trim();
           newDisarm.trim();
 
-          // FIX 3: Use isFourDigits() which validates both length
-          // AND that every character is 0-9, not just length == 4
+          
+          
           if (isFourDigits(newArm) && isFourDigits(newDisarm)) {
             ARM_CODE    = newArm;
             DISARM_CODE = newDisarm;
@@ -770,7 +709,7 @@ void ESPTask(void *pvParameters) {
             ESP_SERIAL.println("LOG:PINs updated");
             xSemaphoreGive(xEspSerialMutex);
           } else {
-            // Tell the dashboard exactly what was rejected
+            
             String errMsg = "LOG:PIN bad: [" + newArm + "][" + newDisarm + "]";
             lcdSend("PIN invalid", "Need 4 digits");
             xSemaphoreTake(xEspSerialMutex, portMAX_DELAY);
@@ -779,7 +718,7 @@ void ESPTask(void *pvParameters) {
             xSemaphoreGive(xEspSerialMutex);
           }
         } else {
-          // No ':' separator found — malformed command
+          
           lcdSend("PIN cmd malformed", "");
           xSemaphoreTake(xEspSerialMutex, portMAX_DELAY);
           ESP_SERIAL.println("LOG:PIN no separator");
@@ -791,9 +730,6 @@ void ESPTask(void *pvParameters) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  SETUP
-// ═══════════════════════════════════════════════════════════════
 void setup() {
   pinMode(PIR_PIN,    INPUT);
   pinMode(MAG_PIN,    INPUT_PULLUP);
