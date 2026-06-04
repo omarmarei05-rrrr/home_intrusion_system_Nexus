@@ -1,51 +1,24 @@
-// ╔══════════════════════════════════════════════════════════════╗
-// ║     ESP32 — NEXUS SECURITY — MQTT CLOUD EDITION             ║
-// ║     Replaces local web server with HiveMQ cloud MQTT        ║
-// ║     STM32 wiring and serial parsing unchanged               ║
-// ╚══════════════════════════════════════════════════════════════╝
-
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
-// ═══════════════════════════════════════════════════════════════
-//  WIFI — your network
-// ═══════════════════════════════════════════════════════════════
 const char* WIFI_SSID     = "Omar";
 const char* WIFI_PASSWORD = "Omar$2005$2005";
 
-// ═══════════════════════════════════════════════════════════════
-//  HIVEMQ CLOUD — fill in your cluster details
-//  Cluster URL:  found in HiveMQ Cloud dashboard (no "ssl://")
-//  Port:         8883 (TLS)
-//  Username/pw:  created under Access Management
-// ═══════════════════════════════════════════════════════════════
 const char* MQTT_HOST     = "nexus-4408dcb8.a01.euc1.aws.hivemq.cloud";
 const int   MQTT_PORT     = 8883;
 const char* MQTT_USER     = "omarmarei";
 const char* MQTT_PASS     = "Omar$2005";
 const char* MQTT_CLIENT   = "nexus-esp32";
 
-// ═══════════════════════════════════════════════════════════════
-//  MQTT TOPICS
-//  esp32/nexus/state  — ESP32 publishes full system state (JSON)
-//  esp32/nexus/log    — ESP32 publishes log entries (string)
-//  esp32/nexus/cmd    — Dashboard publishes commands to ESP32
-// ═══════════════════════════════════════════════════════════════
 #define TOPIC_STATE   "esp32/nexus/state"
 #define TOPIC_LOG     "esp32/nexus/log"
 #define TOPIC_CMD     "esp32/nexus/cmd"
 
-// ═══════════════════════════════════════════════════════════════
-//  UART TO STM32
-// ═══════════════════════════════════════════════════════════════
 #define RXD2 4
 #define TXD2 2
 
-// ═══════════════════════════════════════════════════════════════
-//  RUNTIME STATE
-// ═══════════════════════════════════════════════════════════════
 bool systemArmed  = false;
 bool pirTriggered = false;
 bool doorOpen     = false;
@@ -56,17 +29,11 @@ String eventLog[LOG_SIZE];
 int    logCount = 0;
 
 unsigned long lastPublishTime  = 0;
-const unsigned long PUBLISH_INTERVAL = 3000; // publish state every 3s
+const unsigned long PUBLISH_INTERVAL = 3000; 
 
-// ═══════════════════════════════════════════════════════════════
-//  MQTT + TLS CLIENT
-// ═══════════════════════════════════════════════════════════════
 WiFiClientSecure tlsClient;
 PubSubClient     mqtt(tlsClient);
 
-// ═══════════════════════════════════════════════════════════════
-//  HELPERS
-// ═══════════════════════════════════════════════════════════════
 String getTimestamp() {
   unsigned long s = millis() / 1000;
   unsigned long m = s / 60;
@@ -80,7 +47,7 @@ void addLog(String msg) {
   for (int i = LOG_SIZE - 1; i > 0; i--) eventLog[i] = eventLog[i - 1];
   eventLog[0] = "[" + getTimestamp() + "] " + msg;
   if (logCount < LOG_SIZE) logCount++;
-  // Publish log entry immediately so dashboard sees it fast
+
   if (mqtt.connected()) {
     mqtt.publish(TOPIC_LOG, eventLog[0].c_str(), true);
   }
@@ -92,12 +59,7 @@ void sendToSTM32(String cmd, int waitAfterMs = 0) {
   if (waitAfterMs > 0) delay(waitAfterMs);
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  PUBLISH FULL STATE AS JSON
-//  Dashboard subscribes to this topic and updates UI from it
-// ═══════════════════════════════════════════════════════════════
 void publishState() {
-  // Build JSON log array (last 10 entries)
   StaticJsonDocument<1024> doc;
   doc["armed"] = systemArmed;
   doc["pir"]   = pirTriggered;
@@ -113,14 +75,9 @@ void publishState() {
 
   char buf[1024];
   serializeJson(doc, buf);
-  mqtt.publish(TOPIC_STATE, buf, true); // retained — new subscribers get last state instantly
+  mqtt.publish(TOPIC_STATE, buf, true);
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  HANDLE COMMANDS FROM DASHBOARD via MQTT
-//  Dashboard publishes to esp32/nexus/cmd
-//  Commands: ARM | DISARM | TESTSMS | PHONE=+20... | PIN=1234:5678
-// ═══════════════════════════════════════════════════════════════
 void onMqttMessage(char* topic, byte* payload, unsigned int length) {
   String cmd = "";
   for (unsigned int i = 0; i < length; i++) cmd += (char)payload[i];
@@ -165,9 +122,6 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  PARSE MESSAGES FROM STM32 (unchanged from original)
-// ═══════════════════════════════════════════════════════════════
 void parseSTM32Message(String msg) {
   msg.trim();
   if (msg.length() == 0) return;
@@ -182,12 +136,9 @@ void parseSTM32Message(String msg) {
   else if (msg == "ALARM")    { alertActive = true;   addLog("ALARM triggered!"); }
   else if (msg.startsWith("LOG:")) { addLog(msg.substring(4)); }
 
-  publishState(); // push update immediately on any STM32 event
+  publishState(); 
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  MQTT RECONNECT
-// ═══════════════════════════════════════════════════════════════
 void mqttReconnect() {
   int attempts = 0;
   while (!mqtt.connected() && attempts < 5) {
@@ -205,9 +156,7 @@ void mqttReconnect() {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  SETUP
-// ═══════════════════════════════════════════════════════════════
+
 void setup() {
   Serial.begin(115200);
   Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
@@ -218,11 +167,8 @@ void setup() {
   while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
   Serial.println("\nWiFi connected: " + WiFi.localIP().toString());
 
-  // TLS — HiveMQ public CA is trusted; skip full cert verification
-  // For production, load the full CA cert instead
   tlsClient.setInsecure();
 
-  // MQTT setup
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
   mqtt.setCallback(onMqttMessage);
   mqtt.setBufferSize(1024);
@@ -232,21 +178,15 @@ void setup() {
   addLog("WiFi: " + WiFi.localIP().toString());
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  LOOP
-// ═══════════════════════════════════════════════════════════════
 void loop() {
-  // Maintain MQTT connection
   if (!mqtt.connected()) mqttReconnect();
   mqtt.loop();
 
-  // Read from STM32
   while (Serial2.available()) {
     String line = Serial2.readStringUntil('\n');
     parseSTM32Message(line);
   }
 
-  // Periodic state publish (heartbeat)
   if (millis() - lastPublishTime > PUBLISH_INTERVAL) {
     lastPublishTime = millis();
     publishState();
